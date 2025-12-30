@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Mood, Track } from '@/types';
@@ -8,7 +8,10 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-export default function ListenPage() {
+// Отключаем статическую генерацию для этой страницы
+export const dynamic = 'force-dynamic';
+
+function ListenPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useAuth();
@@ -24,29 +27,7 @@ export default function ListenPage() {
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  useEffect(() => {
-    if (!sessionId || !mood) {
-      router.push('/');
-      return;
-    }
-
-    loadNextTrack();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, mood]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const handleEnded = () => {
-      loadNextTrack();
-    };
-
-    audio.addEventListener('ended', handleEnded);
-    return () => audio.removeEventListener('ended', handleEnded);
-  }, [currentTrack]);
-
-  const loadNextTrack = async () => {
+  const loadNextTrack = useCallback(async () => {
     if (!sessionId || !mood) return;
 
     setLoading(true);
@@ -82,7 +63,28 @@ export default function ListenPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId, mood, user?.uid]);
+
+  useEffect(() => {
+    if (!sessionId || !mood) {
+      router.push('/');
+      return;
+    }
+
+    loadNextTrack();
+  }, [sessionId, mood, router, loadNextTrack]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleEnded = () => {
+      loadNextTrack();
+    };
+
+    audio.addEventListener('ended', handleEnded);
+    return () => audio.removeEventListener('ended', handleEnded);
+  }, [currentTrack, loadNextTrack]);
 
   const handlePlayPause = () => {
     const audio = audioRef.current;
@@ -200,6 +202,18 @@ export default function ListenPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ListenPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-gradient-to-b from-gray-900 via-black to-gray-900 flex flex-col items-center justify-center">
+        <div className="text-gray-400">Загрузка...</div>
+      </main>
+    }>
+      <ListenPageContent />
+    </Suspense>
   );
 }
 
